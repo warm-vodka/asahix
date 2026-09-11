@@ -1,0 +1,98 @@
+name: Update fairydust kernel
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * 1"
+
+concurrency:
+  group: kernel-bump
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve fairydust branch tip
+        id: resolve
+        run: |
+          TIP=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/AsahiLinux/linux/branches/fairydust \
+            | jq -r '.commit.sha')
+          if ! [[ ${TIP} =~ ^[0-9a-f]{40}$ ]]; then
+            echo "unexpected fairydust tip: ${TIP}" >&2
+            exit 1
+          fi
+          CURRENT=$(sed -n 's/.*rev = "\([0-9a-f]\{40\}\)".*/\1/p' package.nix | head -1)
+          echo "tip=${TIP}" >> "$GITHUB_OUTPUT"
+          echo "current=${CURRENT}" >> "$GITHUB_OUTPUT"
+          if [[ "${TIP}" != "${CURRENT}" ]]; then
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "fairydust is already at ${CURRENT}"
+          fi
+
+      - uses: cachix/install-nix-action@v31
+        if: steps.resolve.outputs.update == 'true'
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare bump
+        if: steps.resolve.outputs.update == 'true'
+        id: bump
+        shell: bash
+        run: |
+          set -euo pipefail
+          TIP="${{ steps.resolve.outputs.tip }}"
+
+          VER_BASE=$(curl -fsSL "https://raw.githubusercontent.com/AsahiLinux/linux/${TIP}/Makefile" \
+            | awk '/^VERSION *=/{v=$3} /^PATCHLEVEL *=/{p=$3} /^SUBLEVEL *=/{s=$3} END{print v "." p "." s}')
+          if ! [[ ${VER_BASE} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "can't parse kernel version: ${VER_BASE}" >&2
+            exit 1
+          fi
+          VER="${VER_BASE}-fairydust"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+
+          HASH32=$(nix-prefetch-url --unpack "https://github.com/AsahiLinux/linux/archive/${TIP}.tar.gz" 2>/dev/null)
+          SRI=$(nix hash to-sri --type sha256 "${HASH32}")
+          if ! [[ ${SRI} =~ ^sha256- ]]; then
+            echo "unexpected hash: ${SRI}" >&2
+            exit 1
+          fi
+          echo "hash=${SRI}" >> "$GITHUB_OUTPUT"
+
+          sed -i -E \
+            -e "s|rev = \"[0-9a-f]{40}\"|rev = \"${TIP}\"|" \
+            -e "s|version = \"[0-9.]+\-fairydust\"|version = \"${VER}\"|" \
+            -e "s|modDirVersion = \"[0-9.]+\-fairydust\"|modDirVersion = \"${VER}\"|" \
+            -e "s|hash = \"sha256-[A-Za-z0-9+/=]+\"|hash = \"${SRI}\"|" \
+            package.nix
+
+          grep -q "rev = \"${TIP}\"" package.nix
+          grep -q "version = \"${VER}\"" package.nix
+          grep -q "modDirVersion = \"${VER}\"" package.nix
+          grep -q "hash = \"${SRI}\"" package.nix
+
+      - name: Create pull request
+        if: steps.resolve.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.UPDATE_BOT_TOKEN || github.token }}
+          branch: bump-kernel
+          base: dev
+          delete-branch: true
+          title: "chore: bump linux-asahi to ${{ steps.bump.outputs.version }}"
+          commit-message: "chore: bump linux-asahi to ${{ steps.bump.outputs.version }}"
+          body: |
+            Updated the pinned AsahiLinux/linux fairydust revision:
+
+            - rev: `${{ steps.resolve.outputs.current }}` → `${{ steps.resolve.outputs.tip }}`
+            - version: `${{ steps.bump.outputs.version }}`
