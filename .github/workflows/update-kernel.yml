@@ -59,6 +59,7 @@ jobs:
             exit 1
           fi
           VER="${VER_BASE}-fairydust"
+          BRANCH="${VER_BASE%.*}"
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
 
           HASH32=$(nix-prefetch-url --unpack "https://github.com/AsahiLinux/linux/archive/${TIP}.tar.gz" 2>/dev/null)
@@ -73,12 +74,14 @@ jobs:
             -e "s|rev = \"[0-9a-f]{40}\"|rev = \"${TIP}\"|" \
             -e "s|version = \"[0-9.]+\-fairydust\"|version = \"${VER}\"|" \
             -e "s|modDirVersion = \"[0-9.]+\-fairydust\"|modDirVersion = \"${VER}\"|" \
+            -e "s|extraMeta\.branch = \"[0-9]+\.[0-9]+\"|extraMeta.branch = \"${BRANCH}\"|" \
             -e "s|hash = \"sha256-[A-Za-z0-9+/=]+\"|hash = \"${SRI}\"|" \
             package.nix
 
           grep -q "rev = \"${TIP}\"" package.nix
           grep -q "version = \"${VER}\"" package.nix
           grep -q "modDirVersion = \"${VER}\"" package.nix
+          grep -Fq "extraMeta.branch = \"${BRANCH}\"" package.nix
           grep -q "hash = \"${SRI}\"" package.nix
 
       - name: Create pull request
