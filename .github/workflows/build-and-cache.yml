@@ -26,4 +26,4 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
 
       - name: Build fairydust kernel
-        run: nix build .#packages.aarch64-linux.linux_asahi_fairydust.kernel -L
+        run: nix build .#packages.aarch64-linux.linuxPackages_asahi-fairydust.kernel -L
