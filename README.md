@@ -33,6 +33,16 @@ provides `pkgs.linuxPackages_asahi-fairydust` without configuring the cache.
 The package set is also available directly as
 `asahix.packages.aarch64-linux.linuxPackages_asahi-fairydust`.
 
+All three interfaces expose the same kernel package set, constructed with
+Asahix's pinned nixpkgs rather than the consumer's nixpkgs. This keeps the
+default overlay and module aligned with the derivation built and cached by CI,
+even when your system uses a different nixpkgs revision. Consumer overlays and
+nixpkgs configuration do not implicitly customize this package set.
+
+Keep Asahix's nixpkgs input at its locked revision to use the cached build.
+Overriding that input, including making it follow your system's nixpkgs input,
+can change the derivation and require a local build.
+
 ### Package rename
 
 `packages.aarch64-linux.linux_asahi_fairydust` has been renamed to

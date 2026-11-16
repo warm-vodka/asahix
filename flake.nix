@@ -15,12 +15,14 @@
 
       pkgs = import nixpkgs {
         inherit system;
-        overlays = [ self.overlays.default ];
       };
+
+      # Share the CI package set without evaluating it against a consumer's nixpkgs.
+      linuxPackages_asahi-fairydust = pkgs.callPackage ./package.nix { };
     in
     {
-      overlays.default = final: _prev: {
-        linuxPackages_asahi-fairydust = final.callPackage ./package.nix { };
+      overlays.default = _final: _prev: {
+        inherit linuxPackages_asahi-fairydust;
       };
 
       nixosModules.default = {
@@ -34,7 +36,7 @@
       };
 
       packages.${system} = {
-        inherit (pkgs) linuxPackages_asahi-fairydust;
+        inherit linuxPackages_asahi-fairydust;
 
         linux_asahi_fairydust =
           assert nixpkgs.lib.assertMsg false ''
@@ -43,7 +45,7 @@
             asahix.packages.${system}.linuxPackages_asahi-fairydust, or import
             asahix.nixosModules.default and use pkgs.linuxPackages_asahi-fairydust.
           '';
-          pkgs.linuxPackages_asahi-fairydust;
+          linuxPackages_asahi-fairydust;
       };
     };
 }
